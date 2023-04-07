@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<style>
+    
+    .progress-bar {
+        display: -webkit-box;
+        display: -ms-flexbox;
+        display: flex;
+    }
+
+    .progress-bar {
+        -ms-flex-line-pack: center;
+        -webkit-box-align: center;
+        -ms-flex-align: center;
+        -ms-flex-pack: distribute;
+        align-content: center;
+        align-items: center;
+        border-radius: 10px;
+        display: none;
+        height: 10px;
+        justify-content: space-around;
+        margin: 137px auto 107px;
+        max-width: 80%;
+        width: 1007px;
+    }
+
+    ul {
+        list-style: none;
+        padding: 0;
+    }
+
+    ul {
+        display: block;
+        list-style-type: disc;
+        margin-block-start: 1em;
+        margin-block-end: 1em;
+        margin-inline-start: 0px;
+        margin-inline-end: 0px;
+        padding-inline-start: 40px;
+    }
+
+    .progress-bar li {
+        -webkit-box-flex: 1;
+        -ms-flex-positive: 1;
+        background-color: #4c3eff;
+        background-image: -webkit-gradient(linear,left top,right top,from(#000),to(#000));
+        background-image: linear-gradient(90deg,#000,#000);
+        background-repeat: no-repeat;
+        background-size: 0 100%;
+        color: #fff;
+        content: " ";
+        cursor: pointer;
+        display: -webkit-box;
+        display: -ms-flexbox;
+        display: flex;
+        flex-grow: 1;
+        height: 3px;
+        line-height: 1em;
+        margin: 0;
+        position: relative;
+        text-align: right;
+        -webkit-transition: background-size .4s ease-in-out;
+        transition: background-size .4s ease-in-out;
+        z-index: 0;
+    }
+
+    .progress-bar li:before {
+        background: #4c3eff;
+        border-radius: 50%;
+        color: #fff;
+        content: " ";
+        height: 10px;
+        left: -5px;
+        position: absolute;
+        text-align: center;
+        top: -3px;
+        width: 10px;
+    }
+
+    .progress-bar li.active {
+        background-color: #cfd6dd;
+        background-image: -webkit-gradient(linear,left top,right top,from(#000),to(#000));
+        background-image: linear-gradient(90deg,#000,#000);
+        background-repeat: no-repeat;
+        background-size: 0 100%;
+        -webkit-transition: background-size .4s ease-in-out;
+        transition: background-size .4s ease-in-out;
+    }
+
+
+</style>
+<body>
+    <ul class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+        <li class="">::before<span>Sep 2012 </span></li>
+        <li class="active">::before<span>Sep 2013 </span></li>
+        <li class="">::before<span>Jan 2015</span></li>
+        <li class="">::before<span>Aug 2016</span></li>
+        <li class="">::before<span>Apr 2018</span></li>
+        <li class="">::before<span>Apr 2020</span></li>
+        <li class="">::before<span>May 2021</span></li>
+    </ul>
+
+    <span class="progress-line"></span>
+</body>
+</html>

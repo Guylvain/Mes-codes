@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<style>
+
+    body {
+        margin: 0;
+        padding: 0;
+        font-family: sans-serif;
+        /*background: #000;*/
+    }
+
+    .container {
+        width: 100%;
+        height: 100vh;
+        overflow: hidden;   
+    }
+
+    .container .column {
+        width: 25%;
+        height: 100%;
+        float: left;
+        border-right: 2px solid rgba(0, 0, 0, .5);
+        box-sizing: border-box;
+        z-index: 1;
+    }
+
+    .container .column:last-child {
+        border-right: none;
+    }
+
+    .container .column .content {
+        position: relative;
+        height: 100%;
+    }
+
+    .container .column .content h1 {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 100%;
+        background: rgba(0, 0, 0, .1);
+        text-align: center;
+        margin: 0;
+        padding: 0;
+        color: rgba(255, 255, 255, .5);
+        font-size: 5em;
+        border-top: 2px solid rgba(0, 0, 0, .5);
+        border-bottom: 2px solid rgba(0, 0, 0, .5);
+    }
+
+    .container .column .content .box {
+        position: absolute;
+        top: 50%;
+        transform: translateY(100%);
+        box-sizing: border-box;
+        padding: 40px;
+        background: rgba(255, 255, 255, 1);
+        text-align: center;
+        transition: 0.5s;
+        opacity: 0;
+    }
+
+    .container .column.active .content .box{
+        opacity: 1;
+        transform: translateY(-50%);
+    }
+
+    .container .column .content .box h2 {
+        margin: 0;
+        padding: 0;
+        font-size: 30px;
+        color: #262626;
+    }
+
+    .container .column .content .box p {
+        font-size: 18px;
+        color: #262626;
+    }
+
+    .container .column .bg {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: -1;
+    }
+
+    .container .column.active .bg.bg1{
+    background-image: url("https://images.unsplash.com/photo-1620372730817-2cafe7a8dc15?crop=entropy&cs=tinysrgb&fm=jpg&ixlib=rb-1.2.1&q=80&raw_url=true&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170");
+    background-size: cover;
+    background-attachment: fixed;
+    background-position: center;
+    transition: 0.5s;
+}
+
+.container .column.active .bg.bg2{
+    background-image: url("https://images.pexels.com/photos/279979/pexels-photo-279979.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=750&w=1260");
+    background-size: cover;
+    background-attachment: fixed;
+    background-position: center;
+    transition: 0.5s;
+}
+
+.container .column.active .bg.bg3{
+    background-image: url("https://images.pexels.com/photos/6520214/pexels-photo-6520214.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=750&w=1260");
+    background-size: cover;
+    background-attachment: fixed;
+    background-position: center;
+    transition: 0.5s;
+}
+
+.container .column.active .bg.bg4{
+    background-image: url("https://images.pexels.com/photos/8005368/pexels-photo-8005368.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=750&w=1260");
+    background-size: cover;
+    background-attachment: fixed;
+    background-position: center;
+    transition: 0.5s;
+}
+
+</style>
+
+<body>
+    <div class="container">
+        <div class="column active">
+            <div class="content">
+                <h1>Sûreté</h1>
+                <div class="box">
+                    <h2>Formations Sûreté</h2>
+                    <p>
+                        Sécurisez au mieux votre entreprise, en formant vos collaborateurs aux différentes missions liées à la sûreté.
+                    </p>
+                    <br>
+                    <div style="text-align: center;">
+                        <a style="font-family: Arial, Helvetica, sans-serif; border-radius: 80px; text-align: center; background-color: #000091; text-decoration: none; color: white; padding: 8px 20px; font-weight: bold; height: 60px; width: 240px; font-size: 25px;" href="#"> En savoir plus </a>
+                    </div>
+                    <br>
+                </div>
+            </div>
+            <div class="bg bg1"></div>
+        </div>
+        <div class="column active">
+            <div class="content">
+                <h1>Incendie</h1>
+                <div class="box">
+                    <h2>Formations Incendie</h2>
+                    <p>
+                        Permettez à vos collaborateurs de prévenir tout risque d’incendie et d’intervenir en toute sécurité en cas de départ de feu.
+                    </p>
+                    <br>
+                    <div style="text-align: center;">
+                        <a style="font-family: Arial, Helvetica, sans-serif; border-radius: 80px; text-align: center; background-color: #f20300; text-decoration: none; color: white; padding: 8px 20px; font-weight: bold; height: 60px; width: 240px; font-size: 25px;" href="#"> En savoir plus </a>
+                    </div>
+                    <br>
+                </div>
+            </div>
+            <div class="bg bg2"></div>
+        </div>
+        <div class="column active">
+            <div class="content">
+                <h1>Secourisme</h1>
+                <div class="box">
+                    <h2>Formations Secourisme</h2>
+                    <p>
+                        Formez vos collaborateurs en secourisme, c'est leur garantir d'adopter le bon comportement et les bons réflexes face à toute situation nécessitant des premiers secours.
+                    </p>
+                    <br>
+                    <div style="text-align: center;">
+                        <a style="font-family: Arial, Helvetica, sans-serif; border-radius: 80px; text-align: center; background-color: #096A09; text-decoration: none; color: white; padding: 8px 20px; font-weight: bold; height: 60px; width: 240px; font-size: 25px;" href="#"> En savoir plus </a>
+                    </div>
+                    <br>
+                </div>
+            </div>
+            <div class="bg bg3"></div>
+        </div>
+        <div class="column active">
+            <div class="content">
+                <h1>Habilitation</h1>
+                <div class="box">
+                    <h2>Formations Habilitation</h2>
+                    <p>
+                        Permettez à vos collaborateurs de mettre en œuvre les mesures de prévention, et de connaître la conduite à tenir en cas d’accident ou d’incendie d’origine électrique.
+                    </p>
+                    <br>
+                    <div style="text-align: center;">
+                        <a style="font-family: Arial, Helvetica, sans-serif; border-radius: 80px; text-align: center; background-color: #6C09C4; text-decoration: none; color: white; padding: 8px 20px; font-weight: bold; height: 60px; width: 240px; font-size: 25px;" href="#"> En savoir plus </a>
+                    </div>
+                    <br>
+                </div>
+            </div>
+            <div class="bg bg4"></div>
+        </div>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.6.0.js"></script>
+    <script type="text/javascript">
+        $(document).on('mouseover', '.container .column', function(){
+            $(this).addClass('active').siblings().removeClass('active')
+        })
+    </script>
+</body>

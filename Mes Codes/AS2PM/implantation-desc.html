@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<style>
+    .desc {
+        width: 75%;
+        margin: 0;
+        padding: 0;
+        align-items: center;
+        justify-content: center;
+        text-align: center; 
+    }
+
+    .imp-desc {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 10px;
+        height: 200px;
+        font-family: "Roboto", Sans-serif;
+        align-items: center;
+    }
+
+    .imp-desc-img {
+        flex: 1;
+    }
+
+    .imp-desc-img img{
+        width: 75%;
+        height: auto;
+        margin: 0;
+    }
+
+    .imp-desc-txt {
+        flex: 2;
+    }
+
+    .imp-desc-txt h2{
+        text-decoration: underline;
+    }
+
+    .imp-desc-txt a {
+        display: inline;
+        text-decoration: none;
+        position: relative;
+        color: black;
+    }
+
+    .imp-desc-txt a:after {
+        content: '';
+        display: block;
+        position: absolute;
+        bottom: -1px;
+        width: 0%;
+        left: 0px;
+        height: 2px;
+        transition: 0.25s;
+        background: black;
+    }
+
+    .imp-desc-txt a:hover:after {
+        width: 100%;
+    }
+</style>
+<body>
+    <div class="desc">
+        <div class="imp-desc">
+            <div class="imp-desc-img">
+                <img src="https://www.s3msecurite.fr/s/wp-content/uploads/2022/09/LOGO-S3M-SECURITE.bmp" alt="">
+            </div>
+            <div class="imp-desc-txt">
+                <h2>Siège social</h2>
+                <p>Tel: <a href="tel:+33171631000">01.71.63.10.00</a></p>
+                <p>Mail: <a href="mailto:contact@s3msecurite.fr">contact@s3msecurite.fr</a></p>
+                <p>Adresse: <a href="https://www.google.com/maps/place/S3M+S%C3%A9curit%C3%A9/@48.6230024,2.4209495,17z/data=!3m1!4b1!4m5!3m4!1s0x47e5de0fd327e84d:0xd5ce483af31b7df9!8m2!3d48.6230024!4d2.4231382">505 Pl. des Champs Elysées, 91080 Évry-Courcouronnes</a></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

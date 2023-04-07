@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display&display=swap" rel="stylesheet">
+    <title>Document</title>
+</head>
+
+<style>
+    
+    .button-hover-offres {
+        margin: 0;
+        padding: 0;
+        font-family: 'Playfair Display', serif;
+    }
+
+    .button-hover-offres a {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%,-50%);
+        display: block;
+        padding: 10px 15px;
+        border: 2px solid #000030;
+        border-radius: 10px;
+        background: #fff;
+        text-transform: uppercase;
+        text-decoration: none;
+        letter-spacing: 2px;
+        overflow: hidden;
+    }
+
+    .button-hover-offres a span {
+        font-size: 30px;
+        color: #ffffff;
+        mix-blend-mode: difference;
+    }
+
+    .button-hover-offres a:before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 80px;
+        color: #000030;
+        background: #000030;
+        transition: .5s;
+        transform: skewX(-15deg);
+        animation: animate-button 2s linear infinite;
+    }
+
+    .button-hover-offres a:hover:before {
+        width: 100%;
+        transform: skewX(0deg);
+        animation: none;
+    }
+
+    @keyframes animate-button {
+        0% {
+            left: -80px;
+        }
+
+        100% {
+            left: calc(100% + 10px);
+        }
+    }
+</style>
+
+<body>
+    <div class="button-hover-offres">
+        <a href="#"><span>Prenez Rendez-Vous</span></a>
+    </div>
+</body>
+</html>
