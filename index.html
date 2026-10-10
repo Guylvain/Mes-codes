@@ -157,9 +157,15 @@ a { color: var(--accent); }
   max-height: 72vh; max-height: 72dvh;
   display: flex; flex-direction: column;
 }
-#sheetHead {
+#sheetHead { padding-bottom: 10px; }
+#sheetToggle {
   display: block; width: 100%; text-align: left;
-  background: none; border: 0; padding: 8px 16px 12px;
+  background: none; border: 0; padding: 8px 16px 8px;
+}
+#quickDone {
+  display: block; width: calc(100% - 24px); margin: 2px 12px 0; min-height: 54px;
+  border: 0; border-radius: 14px; background: var(--ok); color: #fff;
+  font-weight: 900; font-size: 1.08rem;
 }
 .grip { display: block; width: 48px; height: 6px; border-radius: 3px; background: var(--border); margin: 0 auto 8px; }
 #sumNow  { display: block; font-weight: 800; font-size: 1.05rem; }
@@ -187,6 +193,13 @@ body.sheet-open #fabs, body.sheet-open #noteRoute { display: none; }
 .tl li.past { opacity: .62; }
 .tl li.current { background: var(--current-bg); border-color: var(--accent); opacity: 1; }
 .tl li.next { border-color: var(--border); border-style: dashed; }
+.tl li.done .num { background: var(--ok); color: #fff; }
+.vbtn {
+  margin-top: 8px; min-height: 48px; padding: 0 16px; border-radius: 12px;
+  border: 2px solid var(--ok); background: transparent; color: var(--ok); font-weight: 900; font-size: 1rem;
+}
+.vbtn.main { background: var(--ok); color: #fff; }
+.vbtn.undo { border-color: var(--border); color: var(--muted); font-weight: 700; min-height: 44px; }
 .tl .num {
   width: 38px; height: 38px; border-radius: 50%;
   display: grid; place-items: center; font-weight: 900; font-size: 1.05rem;
@@ -253,6 +266,7 @@ hr { border: 0; border-top: 2px solid var(--border); margin: 18px 0; }
 .legend i { display: block; height: 6px; border-radius: 3px; }
 
 /* ---------- Marqueurs de la carte ---------- */
+.step-icon.done { background: var(--ok); color: #fff; }
 .step-icon {
   width: 34px; height: 34px; border-radius: 50%;
   background: var(--accent); color: var(--accent-fg);
@@ -309,12 +323,16 @@ hr { border: 0; border-top: 2px solid var(--border); margin: 18px 0; }
 
 <!-- Panneau du bas repliable -->
 <section id="sheet" class="collapsed">
-  <button id="sheetHead" aria-expanded="false" aria-controls="sheetBody">
-    <span class="grip"></span>
-    <span class="toggle-hint" id="toggleHint">▲ Ouvrir</span>
-    <span id="sumNow">…</span>
-    <span id="sumNext"></span>
-  </button>
+  <div id="sheetHead">
+    <button id="sheetToggle" aria-expanded="false" aria-controls="sheetBody">
+      <span class="grip"></span>
+      <span class="toggle-hint" id="toggleHint">▲ Ouvrir</span>
+      <span id="sumNow">…</span>
+      <span id="sumNext"></span>
+    </button>
+    <!-- Validation rapide de l'étape en cours -->
+    <button id="quickDone" hidden></button>
+  </div>
   <div id="sheetBody">
     <div class="tabs" role="tablist">
       <button role="tab" data-tab="steps" aria-selected="true">Étapes</button>
@@ -370,6 +388,7 @@ hr { border: 0; border-top: 2px solid var(--border); margin: 18px 0; }
       </div>
 
       <button class="btn" id="btnReset" style="width:100%">Réinitialiser les réglages</button>
+      <button class="btn" id="btnClearDone" style="width:100%;margin-top:8px">Effacer mes étapes validées</button>
     </div>
 
     <!-- Onglet 3 : infos utiles -->
@@ -610,7 +629,8 @@ function now() {
 /* =====================================================================
    RÉGLAGES — sauvegardés dans localStorage (protégé par try/catch)
    ===================================================================== */
-const STORE_KEY = '20kmParis2026.reglages';
+/* En mode test (?simulate=…), une mémoire séparée : les essais ne touchent pas au jour J. */
+const STORE_KEY = '20kmParis2026.v2' + (SIM_START != null ? '.test' : '');
 const DEFAULT_PACE = parsePace(CONFIG.defaults.pace);
 const SLOW_PACE = parsePace(CONFIG.slowPace);
 const settings = loadSettings();
@@ -622,9 +642,15 @@ function loadSettings() {
     start: hhmmToSec(s.start) != null ? s.start : CONFIG.defaults.start,
     paceSec: (typeof s.paceSec === 'number' && s.paceSec >= 180 && s.paceSec <= 900) ? s.paceSec : DEFAULT_PACE,
     calib: s.calib || null,                 // dernier recalage { km, at }
+    done: cleanDone(s.done),                // étapes validées { numéro: heure de validation (ms) }
     sheetOpen: !!s.sheetOpen,
     tab: ['steps', 'settings', 'infos'].includes(s.tab) ? s.tab : 'steps',
   };
+}
+function cleanDone(d) {
+  const out = {};
+  if (d && typeof d === 'object') CONFIG.steps.forEach((st) => { if (typeof d[st.n] === 'number') out[st.n] = d[st.n]; });
+  return out;
 }
 function saveSettings() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(settings)); } catch (e) { /* stockage indisponible : tant pis */ }
@@ -654,6 +680,30 @@ function currentStepIndex(t, times) {
   return cur;
 }
 
+/** Index de la dernière étape que j'ai validée, -1 si aucune */
+function lastDoneIndex() {
+  let k = -1;
+  CONFIG.steps.forEach((st, i) => { if (settings.done[st.n]) k = i; });
+  return k;
+}
+/**
+ * Étape en cours. Sans validation : d'après l'horaire prévu.
+ * Dès que j'ai validé une étape : celle qui suit ma dernière validation
+ * (comme ça, un retard sur le plan ne fait pas sauter d'étape).
+ */
+function progressIndex(t, times) {
+  const last = lastDoneIndex();
+  return last >= 0 ? Math.min(last + 1, CONFIG.steps.length - 1) : currentStepIndex(t, times);
+}
+/** Étape proposée au bouton de validation rapide (-1 s'il n'y en a plus) */
+function targetIndex(t, times) {
+  const c = progressIndex(t, times);
+  if (c >= 0 && !settings.done[CONFIG.steps[c].n]) return c;
+  if (c < 0) return 0;
+  return -1;   // toutes les étapes sont validées
+}
+const DONE_LABEL = { 'Départ': 'je pars', 'Arrivée': 'j’y suis', 'En place': 'je suis en place' };
+
 /* Position GPS du supporter (mise à jour par watchPosition) */
 let gps = null;   // { lat, lng, acc, ts }
 function freshGps() {
@@ -673,7 +723,8 @@ const runnerPoint = (id) => CONFIG.runnerPoints.find((p) => p.id === id);
 
 /**
  * Estimation de MON arrivée au spot km 15–16 (étape 7) et du temps de trajet restant.
- * Phases : avant son passage au km 7 → plan ; marche retour → GPS si dispo ;
+ * Mes validations priment (heure réelle d'arrivée à La Muette, à FDR, au spot).
+ * Sinon, phases : avant son passage au km 7 → plan ; marche retour → GPS si dispo ;
  * métro → plan ; marche finale → GPS si dispo.
  */
 function travelEstimate(t, times) {
@@ -683,6 +734,17 @@ function travelEstimate(t, times) {
   const walkBack = S[iMuette].at.min, metro = S[iFdr].at.prev, walkEnd = S[iSpot].walkFromPrev;
   const planArrival = times[iFdr] + walkEnd * MIN;
   const p = freshGps();
+  const res = (arrival, how) => ({ arrival, remaining: Math.max(0, arrival - t), how });
+  const d = settings.done, dSpot = d[S[iSpot].n], dFdr = d[S[iFdr].n], dMuette = d[S[iMuette].n];
+  if (dSpot) return res(Math.min(dSpot, t), 'validé');                // j'y suis
+  if (dFdr) {                                                          // je marche depuis FDR
+    return p ? res(t + walkMinTo(p, S[iFdr], S[iSpot], walkEnd) * MIN, 'gps')
+             : res(Math.max(t, dFdr + walkEnd * MIN), 'validé');
+  }
+  if (dMuette) {                                                       // métro pris à La Muette
+    const metroEnd = dMuette + metro * MIN;
+    return res(Math.max(t, metroEnd + walkEnd * MIN), 'validé');
+  }
   let arrival = planArrival, how = 'plan';
   if (t < leave) {
     arrival = planArrival;
@@ -776,8 +838,10 @@ function initMap() {
     if (seen[key]) { seen[key].nums.push(s.n); seen[key].marker.setIcon(stepIcon(seen[key].nums)); return; }
     const marker = L.marker([s.lat, s.lng], { icon: stepIcon([s.n]), zIndexOffset: 500 })
       .addTo(map).bindPopup(() => seen[key].nums.map((n) => stepPopup(CONFIG.steps[n - 1])).join('<hr>'));
-    seen[key] = { nums: [s.n], marker };
+    seen[key] = { nums: [s.n], marker, done: false };
+    stepMarkers.push(seen[key]);
   });
+  refreshStepMarkers();
 
   // Marqueur animé de la coureuse
   runnerMarker = L.marker(routePointAtKm(runnerKmAt(now())), {
@@ -792,14 +856,24 @@ function initMap() {
   syncLabels();
 }
 
-function stepIcon(nums) {
+function stepIcon(nums, done) {
   const w = nums.length > 1 ? 52 : 34;
-  return L.divIcon({ className: '', html: `<div class="step-icon" style="width:${w}px;border-radius:17px">${nums.join('·')}</div>`,
+  return L.divIcon({ className: '', html: `<div class="step-icon${done ? ' done' : ''}" style="width:${w}px;border-radius:17px">${nums.join('·')}</div>`,
     iconSize: [w, 34], iconAnchor: [w / 2, 17] });
+}
+/** Pastilles vertes sur la carte pour les étapes validées */
+const stepMarkers = [];
+function refreshStepMarkers() {
+  stepMarkers.forEach((m) => {
+    const done = m.nums.every((n) => settings.done[n]);
+    if (done !== m.done) { m.done = done; m.marker.setIcon(stepIcon(m.nums, done)); }
+  });
 }
 function stepPopup(s) {
   const times = stepTimes(), t = times[s.n - 1];
-  return `<b>${s.n}. ${esc(s.name)}</b><br>${esc(s.verb)} : <b>${fmtHM(t)}</b><br>${esc(s.text)}`;
+  const done = settings.done[s.n];
+  return `<b>${s.n}. ${esc(s.name)}</b><br>${esc(s.verb)} : <b>${fmtHM(t)}</b>` +
+    (done ? ` · <span style="color:var(--ok);font-weight:800">✓ validée à ${fmtHM(done)}</span>` : '') + `<br>${esc(s.text)}`;
 }
 function runnerPointPopup(p) {
   const when = p.kmTo != null ? `entre ${fmtHM(passMs(p.km))} (km ${p.km}) et ${fmtHM(passMs(p.kmTo))} (km ${p.kmTo})` : fmtHM(passMs(p.km));
@@ -931,7 +1005,7 @@ function refreshMargin() {
 let lastCurrent = null;
 /** Timeline complète (étapes du supporter + passages de la coureuse) */
 function renderTimeline() {
-  const t = now(), times = stepTimes(), cur = currentStepIndex(t, times);
+  const t = now(), times = stepTimes(), cur = progressIndex(t, times), target = targetIndex(t, times);
   const { est, margin, tRef } = refreshMargin();
 
   // Passages de la coureuse, insérés à leur place chronologique
@@ -956,9 +1030,14 @@ function renderTimeline() {
           ${p.approx ? '<div class="meta"><span class="badge approx">position approximative</span></div>' : ''}</div></li>`;
     }
     const s = it.step, i = it.i;
-    const state = i === cur ? 'current' : i < cur ? 'past' : i === cur + 1 ? 'next' : '';
-    const badge = state === 'current' ? '<span class="badge now">EN COURS</span>'
-      : state === 'next' ? '<span class="badge nxt">ENSUITE</span>' : state === 'past' ? '<span class="badge done">✓</span>' : '';
+    const doneAt = settings.done[s.n];
+    const state = (i === cur ? 'current' : i < cur ? 'past' : i === cur + 1 ? 'next' : '') + (doneAt ? ' done' : '');
+    const badge = doneAt ? `<span class="badge done">✓ validée à ${fmtHM(doneAt)}</span>`
+      : i === cur ? '<span class="badge now">EN COURS</span>'
+      : i === cur + 1 ? '<span class="badge nxt">ENSUITE</span>' : '';
+    const vbtn = doneAt
+      ? `<button class="vbtn undo" data-act="undo" data-i="${i}">Annuler la validation</button>`
+      : `<button class="vbtn${i === target ? ' main' : ''}" data-act="done" data-i="${i}">✓ Valider : ${DONE_LABEL[s.verb] || 'fait'}</button>`;
     const pill = s.line === 'walk' ? '<span class="pill walk">🚶 à pied</span>'
       : s.line ? `<span class="pill m${s.line}">${CONFIG.lines[s.line].label}</span>` : '';
     let extra = '';
@@ -971,9 +1050,11 @@ function renderTimeline() {
       const arr = i === 6 ? est.arrival : times[i - 1] + s.walkFromPrev * MIN;
       const late = arr - times[i];
       if (i === 6) {
-        const where = est.remaining > 0 || t < times[i - 1] ? `Arrivée estimée ${fmtHM(arr)}${est.how === 'gps' ? ' (GPS)' : ''}` : 'Tu devrais y être';
+        const where = settings.done[s.n] ? 'Tu y es ✓'
+          : est.remaining > 0 || t < times[i - 1] ? `Arrivée estimée ${fmtHM(arr)}${est.how === 'gps' ? ' (GPS)' : est.how === 'validé' ? ' (d’après tes validations)' : ''}`
+          : 'Tu devrais y être';
         extra += `<div class="est${margin < CONFIG.marginAlertMin * MIN ? ' warn' : ''}">${where} · marge ${Math.floor(margin / MIN)} min avant le km 16 (${fmtHM(tRef)})</div>`;
-      } else if (late > MIN) {
+      } else if (late > MIN && !settings.done[s.n]) {
         extra += `<div class="est warn">⚠ Arrivée estimée ${fmtHM(arr)}, ${Math.round(late / MIN)} min après l’objectif</div>`;
       }
     }
@@ -983,7 +1064,8 @@ function renderTimeline() {
         <div class="name">${esc(s.name)}</div>
         <div class="text">${esc(s.text)}</div>
         ${extra}
-        <div class="meta">${pill}${s.approx ? '<span class="badge approx">position approximative</span>' : ''}</div></div></li>`;
+        <div class="meta">${pill}${s.approx ? '<span class="badge approx">position approximative</span>' : ''}</div>
+        ${vbtn}</div></li>`;
   }).join('');
   $('timeline').innerHTML = html;
 
@@ -993,11 +1075,20 @@ function renderTimeline() {
     $('sumNow').textContent = `Prochaine étape : 1 · ${S[0].name} — ${S[0].verb.toLowerCase()} ${fmtHM(times[0])}`;
     $('sumNext').textContent = `Dans ${fmtDur(times[0] - t)}`;
   } else {
-    $('sumNow').textContent = `Étape ${S[cur].n} · ${S[cur].name} — ${S[cur].verb.toLowerCase()} ${fmtHM(times[cur])}`;
+    $('sumNow').textContent = `Étape ${S[cur].n}${settings.done[S[cur].n] ? ' ✓' : ''} · ${S[cur].name} — ${S[cur].verb.toLowerCase()} ${fmtHM(times[cur])}`;
     $('sumNext').textContent = cur + 1 < S.length
       ? `Ensuite : ${S[cur + 1].n} · ${S[cur + 1].name} à ${fmtHM(times[cur + 1])} (dans ${fmtDur(times[cur + 1] - t)})`
       : 'Dernière étape : direction l’arrivée au pied de la tour Eiffel !';
   }
+
+  // Bouton de validation rapide
+  const q = $('quickDone');
+  q.hidden = target < 0;
+  if (target >= 0) {
+    q.textContent = `✓ Étape ${S[target].n} : ${DONE_LABEL[S[target].verb] || 'fait'}`;
+    q.dataset.i = target;
+  }
+  refreshStepMarkers();
 
   // Fait défiler jusqu'à l'étape en cours quand elle change
   if (cur !== lastCurrent) {
@@ -1044,7 +1135,7 @@ function setSheet(open) {
   settings.sheetOpen = open; saveSettings();
   $('sheet').classList.toggle('collapsed', !open);
   document.body.classList.toggle('sheet-open', open);
-  $('sheetHead').setAttribute('aria-expanded', String(open));
+  $('sheetToggle').setAttribute('aria-expanded', String(open));
   $('toggleHint').textContent = open ? '▼ Replier' : '▲ Ouvrir';
   syncLayout();
   if (open) {
@@ -1072,6 +1163,18 @@ function toast(msg, action) {
 }
 function hideToast() { $('toast').classList.remove('show'); }
 
+/** Valide (ou annule) une étape du supporter */
+function setDone(i, on) {
+  const st = CONFIG.steps[i];
+  const before = settings.done[st.n];
+  if (on) settings.done[st.n] = now(); else delete settings.done[st.n];
+  saveSettings(); renderTimeline();
+  if (on) toast(`Étape ${st.n} validée à ${fmtHM(settings.done[st.n])}`, {
+    label: 'Annuler', run: () => { delete settings.done[st.n]; saveSettings(); renderTimeline(); } });
+  else if (before) toast(`Validation de l’étape ${st.n} annulée`, {
+    label: 'Rétablir', run: () => { settings.done[st.n] = before; saveSettings(); renderTimeline(); } });
+}
+
 /** Applique un changement de réglages, avec possibilité d'annuler */
 function applySettings(change, message) {
   const before = { start: settings.start, paceSec: settings.paceSec, calib: settings.calib };
@@ -1082,11 +1185,14 @@ function applySettings(change, message) {
 }
 
 function bindUi() {
-  $('sheetHead').addEventListener('click', () => setSheet($('sheet').classList.contains('collapsed')));
+  $('sheetToggle').addEventListener('click', () => setSheet($('sheet').classList.contains('collapsed')));
+  $('quickDone').addEventListener('click', () => setDone(+$('quickDone').dataset.i, true));
   document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
 
   // Toucher une étape → centrer la carte dessus
   $('timeline').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-act]');
+    if (b) { setDone(+b.dataset.i, b.dataset.act === 'done'); return; }   // bouton Valider / Annuler
     const li = e.target.closest('li');
     if (!li || !map) return;
     setSheet(false);
@@ -1143,6 +1249,12 @@ function bindUi() {
 
   $('btnReset').addEventListener('click', () => {
     applySettings({ start: CONFIG.defaults.start, paceSec: DEFAULT_PACE, calib: null }, 'Réglages réinitialisés');
+  });
+
+  $('btnClearDone').addEventListener('click', () => {
+    const before = settings.done;
+    settings.done = {}; saveSettings(); renderTimeline();
+    toast('Étapes validées effacées', { label: 'Annuler', run: () => { settings.done = before; saveSettings(); renderTimeline(); } });
   });
 
   // Rafraîchir dès que la page revient au premier plan
