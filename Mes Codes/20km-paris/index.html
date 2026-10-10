@@ -55,9 +55,10 @@
     --warn-border: #f2b233;
     --shadow: 0 4px 18px rgba(0, 0, 0, .6);
   }
-  /* Tuiles OSM assombries (les tracés et marqueurs ne sont pas filtrés) */
-  .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9); }
-  .leaflet-container { background: #1b1f24; }
+  /* Fond de carte sombre natif (CARTO Dark Matter). Si on retombe sur les tuiles
+     OSM classiques, on les assombrit (les tracés et marqueurs ne sont pas filtrés). */
+  .tiles-osm .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9); }
+  .leaflet-container { background: #262a30; }
   .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel); color: var(--fg); }
   .leaflet-control-attribution { background: rgba(20, 25, 32, .8) !important; color: #ccc; }
   .leaflet-control-attribution a { color: #9cc3ff; }
@@ -76,7 +77,7 @@ button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulat
 a { color: var(--accent); }
 
 /* La carte occupe tout l'écran, derrière les panneaux */
-#map { position: fixed; inset: 0; z-index: 0; }
+#map { position: fixed; inset: 0; z-index: 0; background: #e8e4dc; }
 #map-error { padding: 140px 20px; text-align: center; color: var(--muted); }
 .leaflet-top { top: var(--top-h); }
 .leaflet-bottom { bottom: var(--sheet-h); }
@@ -419,6 +420,15 @@ const CONFIG = {
   gpsMaxAccuracyM: 150,
   arrivedRadiusM: 120,               // considéré « arrivé » dans ce rayon
 
+  /* Fonds de carte (données OpenStreetMap). Style CARTO « Voyager » le jour,
+     « Dark Matter » en mode sombre ; tuiles OSM classiques en secours. */
+  tiles: {
+    light: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    dark:  'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    osm:   'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  },
+  startView: { lat: 48.8610, lng: 2.2900, zoom: 13 },   // Paris ouest, avant le cadrage sur le tracé
+
   /* Points clés de la coureuse.
      routeKm = km utilisé pour caler le tracé (si différent de km) ; short = nom court du bandeau. */
   runnerPoints: [
@@ -732,11 +742,12 @@ function initMap() {
     $('map').innerHTML = '<div id="map-error">Carte indisponible (pas de réseau ?).<br>Le compte à rebours et les étapes fonctionnent quand même.</div>';
     return;
   }
-  map = L.map('map', { zoomControl: false, attributionControl: true });
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  }).addTo(map);
+  map = L.map('map', { zoomControl: false, attributionControl: true })
+    .setView([CONFIG.startView.lat, CONFIG.startView.lng], CONFIG.startView.zoom);
+  setBaseLayer();
+  // Suit le passage automatique jour / nuit du téléphone
+  const mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+  if (mq && mq.addEventListener) mq.addEventListener('change', () => setBaseLayer());
 
   // Tracé de la course
   const route = L.polyline(ROUTE, { color: '#e3001b', weight: 7, opacity: .55, lineJoin: 'round' }).addTo(map);
@@ -779,6 +790,26 @@ function initMap() {
   routeBounds = L.latLngBounds(ROUTE);
   allBounds = L.latLngBounds(ROUTE).extend(L.latLngBounds(CONFIG.steps.map((s) => [s.lat, s.lng])));
   fitTo(routeBounds);
+}
+
+/* Fond de carte : CARTO (plus lisible), ou OSM si CARTO ne répond pas */
+let baseLayer = null, useOsm = false;
+function setBaseLayer() {
+  const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  if (baseLayer) map.removeLayer(baseLayer);
+  const osmAttr = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+  baseLayer = useOsm
+    ? L.tileLayer(CONFIG.tiles.osm, { maxZoom: 19, attribution: osmAttr })
+    : L.tileLayer(dark ? CONFIG.tiles.dark : CONFIG.tiles.light, {
+        maxZoom: 20, subdomains: 'abcd', attribution: osmAttr + ' &copy; <a href="https://carto.com/attributions">CARTO</a>' });
+  $('map').classList.toggle('tiles-osm', useOsm);
+  if (!useOsm) {
+    // Bascule sur OSM si les premières tuiles CARTO échouent toutes
+    let ok = 0, ko = 0;
+    baseLayer.on('tileload', () => { ok++; });
+    baseLayer.on('tileerror', () => { if (++ko >= 4 && ok === 0 && !useOsm) { useOsm = true; setBaseLayer(); } });
+  }
+  baseLayer.addTo(map);
 }
 
 function stepIcon(nums) {
