@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#c8102e">
+<title>20 km de Paris — suivi</title>
+
+<!-- Leaflet 1.9.4 (CDN unpkg, avec contrôle d'intégrité) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<style>
+/* =====================================================================
+   THÈME — couleurs à fort contraste (lisibles en plein soleil)
+   Le mode sombre s'active automatiquement selon le réglage du téléphone.
+   ===================================================================== */
+:root {
+  --fg: #0b0f14;
+  --muted: #3a4450;
+  --panel: #ffffff;
+  --panel2: #eef2f6;
+  --border: #c3ccd6;
+  --accent: #0047b3;        /* supporter */
+  --accent-fg: #ffffff;
+  --current-bg: #dfeaff;
+  --runner: #d0001a;        /* coureuse */
+  --ok: #0a7a32;
+  --warn-bg: #ffe28a;
+  --warn-fg: #3d2a00;
+  --warn-border: #b45309;
+  --danger: #c8102e;
+  --shadow: 0 4px 18px rgba(0, 0, 0, .28);
+  --top-h: 96px;            /* mis à jour en JS */
+  --sheet-h: 100px;         /* mis à jour en JS */
+  font-size: 17px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #f3f5f8;
+    --muted: #b7c1cc;
+    --panel: #141920;
+    --panel2: #1f2731;
+    --border: #3a4656;
+    --accent: #6aa6ff;
+    --accent-fg: #06101f;
+    --current-bg: #13294d;
+    --runner: #ff4d5e;
+    --ok: #3fc571;
+    --warn-bg: #4d3a05;
+    --warn-fg: #ffe8a3;
+    --warn-border: #f2b233;
+    --shadow: 0 4px 18px rgba(0, 0, 0, .6);
+  }
+  /* Tuiles OSM assombries (les tracés et marqueurs ne sont pas filtrés) */
+  .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9); }
+  .leaflet-container { background: #1b1f24; }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel); color: var(--fg); }
+  .leaflet-control-attribution { background: rgba(20, 25, 32, .8) !important; color: #ccc; }
+  .leaflet-control-attribution a { color: #9cc3ff; }
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%; width: 100%;
+  overflow: hidden;                         /* jamais de scroll horizontal */
+  background: var(--panel); color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
+a { color: var(--accent); }
+
+/* La carte occupe tout l'écran, derrière les panneaux */
+#map { position: fixed; inset: 0; z-index: 0; }
+#map-error { padding: 140px 20px; text-align: center; color: var(--muted); }
+.leaflet-top { top: var(--top-h); }
+.leaflet-bottom { bottom: var(--sheet-h); }
+.leaflet-control-attribution { font-size: 11px; }
+
+/* ---------- Bandeau du haut : compte à rebours ---------- */
+#top {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  padding: calc(env(safe-area-inset-top) + 8px) 10px 0;
+  pointer-events: none;                     /* laisse passer les gestes vers la carte */
+}
+#top > * { pointer-events: auto; }
+.banner {
+  background: var(--panel); color: var(--fg);
+  border-radius: 16px; box-shadow: var(--shadow);
+  padding: 10px 14px; border: 2px solid var(--border);
+}
+.banner.urgent { background: var(--danger); color: #fff; border-color: #fff; }
+.banner.done   { background: var(--ok); color: #fff; border-color: #fff; }
+#cdMain { font-size: 1.3rem; font-weight: 800; line-height: 1.2; }
+#cdSub  { font-size: .95rem; font-weight: 600; margin-top: 3px; opacity: .92; }
+#cdMain, #cdSub { overflow-wrap: anywhere; }
+.chip-sim {
+  display: inline-block; margin-top: 6px; padding: 2px 9px; border-radius: 999px;
+  background: #6d28d9; color: #fff; font-size: .8rem; font-weight: 800; letter-spacing: .02em;
+}
+.alert {
+  margin-top: 8px; padding: 10px 14px; border-radius: 14px;
+  background: var(--warn-bg); color: var(--warn-fg);
+  border: 2px solid var(--warn-border); font-weight: 700; box-shadow: var(--shadow);
+}
+.alert.bad { background: var(--danger); color: #fff; border-color: #fff; }
+
+/* ---------- Toast (messages courts) ---------- */
+#toast {
+  position: fixed; left: 10px; right: 10px; z-index: 1200;
+  top: calc(var(--top-h) + 8px);
+  display: none; align-items: center; gap: 10px;
+  background: #111827; color: #fff; padding: 12px 14px; border-radius: 14px;
+  box-shadow: var(--shadow); font-weight: 600;
+}
+#toast.show { display: flex; }
+#toast span { flex: 1; }
+#toast button {
+  background: #fff; color: #111827; border: 0; border-radius: 10px;
+  min-height: 44px; padding: 0 14px; font-weight: 800;
+}
+
+/* ---------- Boutons flottants ---------- */
+#fabs {
+  position: fixed; right: 10px; z-index: 900;
+  bottom: calc(var(--sheet-h) + 26px);
+  display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
+}
+.fab {
+  min-height: 52px; padding: 0 18px; border-radius: 26px;
+  background: var(--panel); color: var(--fg);
+  border: 2px solid var(--border); box-shadow: var(--shadow);
+  font-weight: 800; font-size: 1rem; white-space: nowrap;
+}
+.fab.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+#noteRoute {
+  position: fixed; left: 10px; z-index: 900;
+  bottom: calc(var(--sheet-h) + 26px);
+  max-width: calc(100% - 200px);
+  background: var(--panel); color: var(--fg); border: 2px solid var(--runner);
+  padding: 5px 10px; border-radius: 10px; font-size: .8rem; font-weight: 700;
+  box-shadow: var(--shadow);
+}
+
+/* ---------- Panneau du bas repliable ---------- */
+#sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 1000;
+  background: var(--panel); color: var(--fg);
+  border-radius: 20px 20px 0 0; box-shadow: 0 -4px 22px rgba(0, 0, 0, .3);
+  border-top: 2px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+  max-height: 72vh; max-height: 72dvh;
+  display: flex; flex-direction: column;
+}
+#sheetHead {
+  display: block; width: 100%; text-align: left;
+  background: none; border: 0; padding: 8px 16px 12px;
+}
+.grip { display: block; width: 48px; height: 6px; border-radius: 3px; background: var(--border); margin: 0 auto 8px; }
+#sumNow  { display: block; font-weight: 800; font-size: 1.05rem; }
+#sumNext { display: block; color: var(--muted); font-weight: 600; font-size: .92rem; margin-top: 2px; }
+.toggle-hint { float: right; font-weight: 800; color: var(--accent); margin-left: 8px; }
+#sheetBody { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0 12px 16px; overscroll-behavior: contain; }
+#sheet.collapsed #sheetBody { display: none; }
+body.sheet-open #fabs, body.sheet-open #noteRoute { display: none; }
+
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px;
+        position: sticky; top: 0; background: var(--panel); padding: 2px 0 6px; z-index: 2; }
+.tabs button {
+  min-height: 48px; border-radius: 12px; border: 2px solid var(--border);
+  background: var(--panel2); font-weight: 800;
+}
+.tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+
+/* ---------- Timeline ---------- */
+.tl { margin: 0; padding: 0; }
+.tl li {
+  list-style: none; display: grid; grid-template-columns: 42px 1fr; gap: 10px;
+  padding: 10px; margin-bottom: 8px; border-radius: 14px;
+  background: var(--panel2); border: 2px solid transparent; cursor: pointer;
+}
+.tl li.past { opacity: .62; }
+.tl li.current { background: var(--current-bg); border-color: var(--accent); opacity: 1; }
+.tl li.next { border-color: var(--border); border-style: dashed; }
+.tl .num {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: grid; place-items: center; font-weight: 900; font-size: 1.05rem;
+  background: var(--accent); color: var(--accent-fg);
+}
+.tl li.run .num { background: var(--runner); color: #fff; font-size: 1.15rem; }
+.tl li.run { border-left: 6px solid var(--runner); }
+.tl .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.tl .time { font-size: 1.4rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+.tl .verb { font-weight: 700; color: var(--muted); }
+.tl .name { font-weight: 800; margin-top: 2px; }
+.tl .text { margin-top: 3px; line-height: 1.35; }
+.tl .meta { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tl .est { margin-top: 6px; font-weight: 700; font-size: .95rem; }
+.tl .est.warn { color: var(--danger); }
+.badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .78rem; font-weight: 800; }
+.badge.now  { background: var(--accent); color: var(--accent-fg); }
+.badge.nxt  { background: var(--border); color: var(--fg); }
+.badge.done { background: var(--ok); color: #fff; }
+.badge.approx { background: #ffd43b; color: #3d2a00; }
+.pill { display: inline-block; padding: 2px 9px; border-radius: 8px; font-weight: 900; font-size: .85rem; }
+.pill.m14 { background: #662483; color: #fff; }
+.pill.m9  { background: #B6BD00; color: #111; }
+.pill.m8  { background: #C5A3CA; color: #111; }
+.pill.walk { background: transparent; color: var(--fg); border: 2px dashed var(--muted); }
+
+/* ---------- Réglages ---------- */
+.field { margin-bottom: 16px; }
+.field > label, .field > .lbl { display: block; font-weight: 800; margin-bottom: 6px; }
+.hint { color: var(--muted); font-size: .9rem; margin-top: 4px; }
+.err  { color: var(--danger); font-weight: 700; font-size: .95rem; margin-top: 4px; }
+input[type="time"], input[type="text"] {
+  width: 100%; min-height: 54px; font-size: 1.3rem; font-weight: 700; /* ≥16px : pas de zoom iOS */
+  padding: 0 12px; border-radius: 12px; border: 2px solid var(--border);
+  background: var(--panel2); color: var(--fg); font-variant-numeric: tabular-nums;
+}
+.row { display: flex; gap: 8px; align-items: stretch; }
+.row > * { min-width: 0; }
+.btn {
+  flex: 1; min-height: 52px; padding: 0 12px; border-radius: 12px;
+  border: 2px solid var(--border); background: var(--panel2); color: var(--fg);
+  font-weight: 800; font-size: 1rem;
+}
+.btn.sq { flex: 0 0 64px; font-size: 1.3rem; }
+.btn.primary { background: var(--runner); color: #fff; border-color: transparent; min-height: 62px; font-size: 1.1rem; }
+.btn.active { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+.kmval {
+  flex: 1; display: grid; place-items: center; font-size: 1.6rem; font-weight: 900;
+  border-radius: 12px; background: var(--panel2); border: 2px solid var(--border);
+}
+.passes { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.passes td { padding: 6px 4px; border-bottom: 1px solid var(--border); }
+.passes td:last-child { text-align: right; font-weight: 800; }
+hr { border: 0; border-top: 2px solid var(--border); margin: 18px 0; }
+
+/* ---------- Infos ---------- */
+.info h3 { margin: 6px 0 8px; font-size: 1.05rem; }
+.info ul { margin: 0 0 12px; padding-left: 20px; line-height: 1.5; }
+.info .bigLink {
+  display: block; text-align: center; padding: 14px; border-radius: 14px;
+  background: var(--accent); color: var(--accent-fg); font-weight: 800; text-decoration: none; margin: 10px 0 16px;
+}
+.legend { display: grid; grid-template-columns: 54px 1fr; gap: 8px 10px; align-items: center; margin-bottom: 12px; }
+.legend i { display: block; height: 6px; border-radius: 3px; }
+
+/* ---------- Marqueurs de la carte ---------- */
+.step-icon {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-fg);
+  border: 3px solid #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .45);
+  display: grid; place-items: center; font-weight: 900; font-size: 16px;
+}
+.km-anchor { overflow: visible; }
+.km-pill {
+  position: absolute; left: 0; bottom: 20px; transform: translateX(-50%); white-space: nowrap; text-align: center;
+  background: var(--runner); color: #fff; border: 2px solid #fff; border-radius: 10px;
+  padding: 3px 8px; font-weight: 900; font-size: 13px; line-height: 1.25;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .4);
+}
+.km-pill small { display: block; background: #ffd43b; color: #3d2a00; border-radius: 6px; padding: 0 4px; margin-top: 2px; font-size: 10px; }
+.runner-icon { position: relative; width: 46px; height: 46px; }
+.runner-icon::before {               /* halo qui pulse */
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: rgba(208, 0, 26, .45); animation: pulse 1.8s ease-out infinite;
+}
+.runner-icon span {
+  position: absolute; inset: 7px; border-radius: 50%;
+  background: #d0001a; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .5);
+  display: grid; place-items: center; font-size: 17px;
+}
+@keyframes pulse { 0% { transform: scale(.6); opacity: 1; } 100% { transform: scale(1.7); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .runner-icon::before { animation: none; } }
+.leaflet-popup-content { font-size: 15px; line-height: 1.4; margin: 12px 14px; }
+.leaflet-popup-content b { font-size: 16px; }
+</style>
+</head>
+<body>
+
+<!-- Bandeau du haut, toujours visible -->
+<header id="top">
+  <div id="banner" class="banner" role="status" aria-live="polite">
+    <div id="cdMain">Chargement…</div>
+    <div id="cdSub"></div>
+    <div id="simChip" class="chip-sim" hidden></div>
+  </div>
+  <div id="marginAlert" class="alert" hidden></div>
+</header>
+
+<div id="map"></div>
+
+<div id="toast"><span id="toastMsg"></span><button id="toastBtn" hidden></button></div>
+
+<div id="noteRoute">Tracé rouge : indicatif</div>
+<div id="fabs">
+  <button class="fab" id="btnRunner">🏃‍♀️ Elle</button>
+  <button class="fab" id="btnAll">🗺️ Tout voir</button>
+  <button class="fab primary" id="btnMe">📍 Me centrer</button>
+</div>
+
+<!-- Panneau du bas repliable -->
+<section id="sheet" class="collapsed">
+  <button id="sheetHead" aria-expanded="false" aria-controls="sheetBody">
+    <span class="grip"></span>
+    <span class="toggle-hint" id="toggleHint">▲ Ouvrir</span>
+    <span id="sumNow">…</span>
+    <span id="sumNext"></span>
+  </button>
+  <div id="sheetBody">
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="steps" aria-selected="true">Étapes</button>
+      <button role="tab" data-tab="settings" aria-selected="false">Réglages</button>
+      <button role="tab" data-tab="infos" aria-selected="false">Infos</button>
+    </div>
+
+    <!-- Onglet 1 : timeline -->
+    <div class="tabpanel" id="tab-steps">
+      <ol class="tl" id="timeline"></ol>
+    </div>
+
+    <!-- Onglet 2 : réglages -->
+    <div class="tabpanel" id="tab-settings" hidden>
+      <div class="field">
+        <label for="inStart">Heure de départ de la coureuse</label>
+        <input type="time" id="inStart" step="60">
+      </div>
+
+      <div class="field">
+        <label for="inPace">Allure (min:s par km)</label>
+        <div class="row">
+          <button class="btn sq" id="paceMinus" aria-label="Allure moins 5 secondes">−5</button>
+          <input type="text" id="inPace" inputmode="text" autocomplete="off" placeholder="6:26">
+          <button class="btn sq" id="pacePlus" aria-label="Allure plus 5 secondes">+5</button>
+        </div>
+        <div class="err" id="paceErr" hidden></div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn" id="paceNormal">Allure prévue</button>
+          <button class="btn" id="paceSlow">🐢 Allure lente</button>
+        </div>
+      </div>
+
+      <hr>
+
+      <div class="field">
+        <div class="lbl">Recaler sur son passage réel</div>
+        <div class="row">
+          <button class="btn sq" id="kmMinus" aria-label="Kilomètre précédent">−</button>
+          <div class="kmval" id="kmVal">km 7</div>
+          <button class="btn sq" id="kmPlus" aria-label="Kilomètre suivant">+</button>
+        </div>
+        <button class="btn primary" id="btnCalib" style="width:100%;margin-top:8px">Elle est passée maintenant au km 7</button>
+        <div class="hint">Calcule son allure réelle depuis le départ et recalcule toutes les heures.</div>
+        <div class="hint" id="calibInfo"></div>
+      </div>
+
+      <hr>
+
+      <div class="field">
+        <div class="lbl">Passages calculés</div>
+        <table class="passes" id="passTable"></table>
+      </div>
+
+      <button class="btn" id="btnReset" style="width:100%">Réinitialiser les réglages</button>
+    </div>
+
+    <!-- Onglet 3 : infos utiles -->
+    <div class="tabpanel info" id="tab-infos" hidden>
+      <h3>Infos utiles</h3>
+      <ul>
+        <li><b>Lignes de métro 6, 11 et 13 fermées.</b></li>
+        <li>L’arrivée se fait <b>au pied de la tour Eiffel</b>.</li>
+        <li>Au km 15–16, ne pas aller à la Concorde même : les coureurs y passent dans un souterrain.</li>
+        <li>La position au km 7 est <b>estimée</b> (position approximative).</li>
+        <li>Le tracé rouge est <b>indicatif</b>, la position de la coureuse est une estimation calculée à partir de l’heure de départ et de l’allure.</li>
+      </ul>
+      <a class="bigLink" href="https://harmonie-mutuelle.20kmparis.com" target="_blank" rel="noopener">Suivi officiel en direct ↗</a>
+
+      <h3>Légende</h3>
+      <div class="legend">
+        <i style="background:#d0001a;opacity:.6;height:8px"></i><span>Tracé de la course (indicatif)</span>
+        <i style="background:#662483"></i><span>Métro ligne 14</span>
+        <i style="background:#B6BD00"></i><span>Métro ligne 9</span>
+        <i style="background:#C5A3CA"></i><span>Métro ligne 8</span>
+        <i style="background:repeating-linear-gradient(90deg,#6b7280 0 4px,transparent 4px 10px)"></i><span>À pied</span>
+      </div>
+
+      <h3>Mode test</h3>
+      <p class="hint">Ajouter <code>?simulate=10:50</code> à l’adresse pour simuler l’heure du jour de course (et <code>&amp;speed=30</code> pour accélérer le temps ×30).</p>
+    </div>
+  </div>
+</section>
+
+<script>
+'use strict';
+
+/* =====================================================================
+   CONFIG — toutes les données modifiables sont ici.
+   Coordonnées au format [latitude, longitude] (ou lat / lng).
+   ===================================================================== */
+const CONFIG = {
+  raceDate: '2026-10-11',            // dimanche 11 octobre 2026 (heure locale du téléphone)
+  defaults: { start: '10:35', pace: '6:26' },
+  slowPace: '7:50',
+  totalKm: 20,
+
+  runnerUpdateMs: 15000,             // mise à jour du marqueur de la coureuse
+  urgentMin: 10,                     // bandeau rouge si passage dans moins de X min
+  marginAlertMin: 5,                 // alerte si marge < X min au km 16
+  marginKm: 16,                      // km de référence pour l'alerte de marge
+  gpsMaxAgeMs: 120000,               // position GPS considérée « fraîche » pendant 2 min
+  gpsMaxAccuracyM: 150,
+  arrivedRadiusM: 120,               // considéré « arrivé » dans ce rayon
+
+  /* Points clés de la coureuse.
+     routeKm = km utilisé pour caler le tracé (si différent de km) ; short = nom court du bandeau. */
+  runnerPoints: [
+    { id: 'km0',  km: 0,  label: 'Départ',   place: "Pont d'Iéna", short: "pont d'Iéna", lat: 48.8600, lng: 2.2925 },
+    { id: 'km7',  km: 7,  label: 'km 7',     place: 'Allée de la Reine-Marguerite (bois de Boulogne)', short: 'allée de la Reine-Marguerite',
+      lat: 48.8530, lng: 2.2475, approx: true },
+    { id: 'km15', km: 15, kmTo: 16, routeKm: 15.5, label: 'km 15–16',
+      place: 'Cours la Reine (entre le pont Alexandre-III et la Concorde)', short: 'Cours la Reine', lat: 48.8645, lng: 2.3145 },
+    { id: 'km20', km: 20, label: 'Arrivée',  place: 'Pied de la tour Eiffel', short: 'tour Eiffel', lat: 48.8565, lng: 2.2975 },
+  ],
+
+  /* Tracé APPROXIMATIF de la course (polyligne rouge).
+     Les points clés ci-dessus doivent figurer tels quels dans la liste :
+     ils servent d'ancres pour placer la coureuse au bon km. */
+  route: [
+    [48.8600, 2.2925],  // km 0 — départ pont d'Iéna
+    [48.8613, 2.2900], [48.8624, 2.2880],                 // montée vers le Trocadéro
+    [48.8636, 2.2862],                                    // place du Trocadéro
+    [48.8660, 2.2886], [48.8690, 2.2915], [48.8722, 2.2940], // avenue Kléber
+    [48.8730, 2.2962], [48.8745, 2.2960], [48.8747, 2.2938], // tour de l'Arc de Triomphe
+    [48.8734, 2.2922],
+    [48.8728, 2.2880], [48.8720, 2.2822], [48.8713, 2.2772], // avenue Foch → Porte Dauphine
+    [48.8708, 2.2700],                                    // carrefour du Bout-des-Lacs
+    [48.8690, 2.2620], [48.8660, 2.2530], [48.8630, 2.2460], // allée de Longchamp
+    [48.8607, 2.2400],                                    // carrefour de Longchamp
+    [48.8575, 2.2432],                                    // allée de la Reine-Marguerite
+    [48.8530, 2.2475],  // km 7 (estimé)
+    [48.8495, 2.2510], [48.8478, 2.2530],                 // vers Roland-Garros
+    [48.8462, 2.2516], [48.8450, 2.2528],                 // boulevard d'Auteuil
+    [48.8445, 2.2548],                                    // Porte Molitor
+    [48.8420, 2.2560], [48.8395, 2.2565], [48.8378, 2.2570], // boulevard Murat → Porte de Saint-Cloud
+    [48.8385, 2.2640], [48.8400, 2.2705],                 // vers la Seine (pont du Garigliano)
+    [48.8435, 2.2745], [48.8480, 2.2772],                 // quai Louis-Blériot
+    [48.8525, 2.2800],                                    // Maison de la Radio
+    [48.8562, 2.2845], [48.8585, 2.2878],                 // quai Kennedy, Bir-Hakeim
+    [48.8618, 2.2935],                                    // Trocadéro / pont d'Iéna (rive droite)
+    [48.8630, 2.2980], [48.8640, 2.3010],                 // avenue de New-York, Alma
+    [48.8645, 2.3065],                                    // Cours Albert-Ier
+    [48.8645, 2.3145],  // km 15–16 — Cours la Reine (Grand Palais)
+    [48.8655, 2.3205],                                    // Concorde (souterrain)
+    [48.8635, 2.3260], [48.8615, 2.3305], [48.8608, 2.3320], // quai des Tuileries → Pont Royal
+    [48.8592, 2.3292],                                    // Pont Royal, rive gauche
+    [48.8603, 2.3250], [48.8627, 2.3190],                 // quai Anatole-France
+    [48.8630, 2.3135], [48.8625, 2.3080],                 // quai d'Orsay
+    [48.8617, 2.3020], [48.8600, 2.2975],                 // quai Branly
+    [48.8588, 2.2985],
+    [48.8565, 2.2975],  // km 20 — arrivée au pied de la tour Eiffel
+  ],
+
+  /* Itinéraire du supporter.
+     at: { km, min } = heure de passage au km `km` + `min` minutes ;
+     at: { prev }    = heure de l'étape précédente + `prev` minutes.
+     walkFromPrev    = minutes de marche depuis l'étape précédente (sert à vérifier l'arrivée).
+     leaveAfter      = id du point où je la vois avant de repartir (affiché « quitter le spot dès son passage »). */
+  steps: [
+    { n: 1, name: "L'Haÿ-les-Roses (M14)", lat: 48.77554, lng: 2.35403,
+      at: { km: 7, min: -100 }, verb: 'Départ', line: '14',
+      text: 'Ligne 14 direction Saint-Denis Pleyel.' },
+    { n: 2, name: 'Saint-Lazare → Havre-Caumartin (M9)', lat: 48.87547, lng: 2.32571,
+      at: { prev: 28 }, verb: 'Arrivée', line: '9',
+      text: 'Correspondance vers la ligne 9, direction Pont de Sèvres.' },
+    { n: 3, name: 'La Muette (M9)', lat: 48.8580, lng: 2.2741,
+      at: { prev: 22 }, verb: 'Arrivée', line: 'walk',
+      text: 'Sortir côté jardin du Ranelagh, puis marcher vers l’ouest par la route des Lacs à Passy, environ 25 min.' },
+    { n: 4, name: 'Spot km 7', lat: 48.8530, lng: 2.2475,
+      at: { km: 7, min: -25 }, verb: 'En place', walkFromPrev: 25, approx: true,
+      text: 'Rester côté est de l’allée.' },
+    { n: 5, name: 'Retour à La Muette (M9)', lat: 48.8580, lng: 2.2741,
+      at: { km: 7, min: 25 }, verb: 'Arrivée', line: '9', leaveAfter: 'km7',
+      text: 'Ligne 9 direction Mairie de Montreuil.' },
+    { n: 6, name: 'Franklin D. Roosevelt (M9)', lat: 48.86877, lng: 2.30923,
+      at: { prev: 12 }, verb: 'Arrivée', line: 'walk',
+      text: 'Descendre l’avenue Winston-Churchill vers la Seine.' },
+    { n: 7, name: 'Spot km 15–16', lat: 48.8645, lng: 2.3145,
+      at: { km: 16, min: -13 }, verb: 'En place', walkFromPrev: 8,
+      text: 'Ne pas aller à la Concorde même, les coureurs y passent dans un souterrain.' },
+    { n: 8, name: 'Concorde (M8)', lat: 48.8656, lng: 2.3212,
+      at: { km: 16, min: 7 }, verb: 'Arrivée', line: '8', leaveAfter: 'km15',
+      text: 'Ligne 8 direction Balard.' },
+    { n: 9, name: 'École Militaire (M8)', lat: 48.8549, lng: 2.3065,
+      at: { prev: 10 }, verb: 'Arrivée', line: 'walk',
+      text: 'Arrivée à 10 min à pied.' },
+  ],
+
+  /* Segments du trajet du supporter (dessin uniquement). */
+  lines: {
+    '14': { color: '#662483', label: 'M14' },
+    '9':  { color: '#B6BD00', label: 'M9' },
+    '8':  { color: '#C5A3CA', label: 'M8' },
+  },
+  legs: [
+    { mode: 'metro', line: '14', path: [            // L'Haÿ-les-Roses → Saint-Lazare
+      [48.77554, 2.35403], [48.7950, 2.3480], [48.8100, 2.3530], [48.8222, 2.3584],
+      [48.8269, 2.3669], [48.8299, 2.3762], [48.8333, 2.3866], [48.8400, 2.3795],
+      [48.8443, 2.3740], [48.8584, 2.3475], [48.8658, 2.3346], [48.8700, 2.3245],
+      [48.87547, 2.32571] ] },
+    { mode: 'metro', line: '9', path: [             // Havre-Caumartin → La Muette (aller et retour)
+      [48.87547, 2.32571], [48.8745, 2.3203], [48.8735, 2.3160], [48.8721, 2.3104],
+      [48.86877, 2.30923], [48.8647, 2.3010], [48.8648, 2.2938], [48.8631, 2.2873],
+      [48.8640, 2.2779], [48.8580, 2.2741] ] },
+    { mode: 'walk', path: [                         // La Muette → spot km 7 (aller et retour)
+      [48.8580, 2.2741], [48.8575, 2.2700], [48.8582, 2.2655], [48.8575, 2.2610],
+      [48.8560, 2.2560], [48.8545, 2.2510], [48.8530, 2.2475] ] },
+    { mode: 'walk', path: [                         // FDR → av. Winston-Churchill → spot km 15–16
+      [48.86877, 2.30923], [48.8683, 2.3110], [48.8680, 2.3136], [48.8660, 2.3136],
+      [48.8648, 2.3138], [48.8645, 2.3145] ] },
+    { mode: 'walk', path: [                         // spot → Concorde (Cours la Reine)
+      [48.8645, 2.3145], [48.8650, 2.3180], [48.8656, 2.3212] ] },
+    { mode: 'metro', line: '8', path: [             // Concorde → École Militaire
+      [48.8656, 2.3212], [48.8610, 2.3146], [48.8577, 2.3105], [48.8549, 2.3065] ] },
+    { mode: 'walk', path: [                         // École Militaire → arrivée
+      [48.8549, 2.3065], [48.8558, 2.3030], [48.8562, 2.3000], [48.8565, 2.2975] ] },
+  ],
+};
+
+/* =====================================================================
+   OUTILS
+   ===================================================================== */
+const $ = (id) => document.getElementById(id);
+const pad = (n) => String(n).padStart(2, '0');
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const MIN = 60000;
+
+/** "10:35" → secondes depuis minuit (ou null si invalide) */
+function hhmmToSec(str) {
+  const m = /^\s*(\d{1,2})\s*[:hH]\s*(\d{2})(?:\s*:\s*(\d{2}))?\s*$/.exec(str || '');
+  if (!m) return null;
+  const h = +m[1], mi = +m[2], s = +(m[3] || 0);
+  if (h > 23 || mi > 59 || s > 59) return null;
+  return h * 3600 + mi * 60 + s;
+}
+/** "6:26" → 386 secondes par km (ou null si invalide / hors 3:00–15:00) */
+function parsePace(str) {
+  const m = /^\s*(\d{1,2})\s*[:'’.,mM]\s*(\d{1,2})\s*(?:["”]|s)?\s*$/.exec(str || '');
+  if (!m || +m[2] > 59) return null;
+  const sec = +m[1] * 60 + +m[2];
+  return sec >= 180 && sec <= 900 ? sec : null;
+}
+const fmtPace = (sec) => `${Math.floor(sec / 60)}:${pad(Math.round(sec % 60))}`;
+/** Heure HH:MM (secondes tronquées) */
+function fmtHM(ms) { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+/** Durée lisible : « 23 min », « 4 min 12 s », « 1 h 05 » */
+function fmtDur(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  if (m < 10) return `${m} min ${pad(s % 60)} s`;
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} h ${pad(m % 60)}`;
+  return `${Math.floor(h / 24)} j ${h % 24} h`;
+}
+const fmtKm = (km) => km.toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+
+/** Date du jour de course à une heure donnée (secondes depuis minuit), heure locale */
+function raceDayAt(sec) {
+  const [y, mo, d] = CONFIG.raceDate.split('-').map(Number);
+  return new Date(y, mo - 1, d, Math.floor(sec / 3600), Math.floor(sec / 60) % 60, sec % 60).getTime();
+}
+
+/** Distance en mètres entre deux points (haversine) */
+function distM(a, b) {
+  const R = 6371000, toR = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * toR, dLng = (b[1] - a[1]) * toR;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * toR) * Math.cos(b[0] * toR) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
+/* =====================================================================
+   HORLOGE — réelle, ou simulée avec ?simulate=HH:MM (&speed=N)
+   ===================================================================== */
+const params = new URLSearchParams(location.search);
+const LOAD_REAL = Date.now();
+const SIM_SEC = hhmmToSec(params.get('simulate'));
+const SIM_START = SIM_SEC == null ? null : raceDayAt(SIM_SEC);
+const SIM_SPEED = clamp(parseFloat(params.get('speed')) || 1, 0.1, 600);
+/** Heure « courante » utilisée partout dans la page */
+function now() {
+  return SIM_START == null ? Date.now() : SIM_START + (Date.now() - LOAD_REAL) * SIM_SPEED;
+}
+
+/* =====================================================================
+   RÉGLAGES — sauvegardés dans localStorage (protégé par try/catch)
+   ===================================================================== */
+const STORE_KEY = '20kmParis2026.reglages';
+const DEFAULT_PACE = parsePace(CONFIG.defaults.pace);
+const SLOW_PACE = parsePace(CONFIG.slowPace);
+const settings = loadSettings();
+
+function loadSettings() {
+  let s = {};
+  try { s = JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { s = {}; }
+  return {
+    start: hhmmToSec(s.start) != null ? s.start : CONFIG.defaults.start,
+    paceSec: (typeof s.paceSec === 'number' && s.paceSec >= 180 && s.paceSec <= 900) ? s.paceSec : DEFAULT_PACE,
+    calib: s.calib || null,                 // dernier recalage { km, at }
+    sheetOpen: !!s.sheetOpen,
+    tab: ['steps', 'settings', 'infos'].includes(s.tab) ? s.tab : 'steps',
+  };
+}
+function saveSettings() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(settings)); } catch (e) { /* stockage indisponible : tant pis */ }
+}
+
+/* =====================================================================
+   CALCULS — passages de la coureuse et heures du supporter
+   ===================================================================== */
+const startMs = () => raceDayAt(hhmmToSec(settings.start));
+/** Heure de passage à un km = départ + km × allure */
+const passMs = (km) => startMs() + km * settings.paceSec * 1000;
+/** Km estimé de la coureuse à l'instant t */
+const runnerKmAt = (t) => clamp((t - startMs()) / (settings.paceSec * 1000), 0, CONFIG.totalKm);
+
+/** Heures de toutes les étapes du supporter (ms) */
+function stepTimes() {
+  const out = [];
+  CONFIG.steps.forEach((s, i) => {
+    out.push(s.at.km != null ? passMs(s.at.km) + s.at.min * MIN : out[i - 1] + s.at.prev * MIN);
+  });
+  return out;
+}
+/** Index de l'étape en cours (dernière étape commencée), -1 si rien n'a commencé */
+function currentStepIndex(t, times) {
+  let cur = -1;
+  times.forEach((tt, i) => { if (tt <= t) cur = i; });
+  return cur;
+}
+
+/* Position GPS du supporter (mise à jour par watchPosition) */
+let gps = null;   // { lat, lng, acc, ts }
+function freshGps() {
+  return gps && Date.now() - gps.ts < CONFIG.gpsMaxAgeMs && gps.acc <= CONFIG.gpsMaxAccuracyM ? gps : null;
+}
+/**
+ * Minutes de marche restantes depuis ma position GPS : on reprend la durée prévue
+ * du trajet à pied (from → to) au prorata de la distance (à vol d'oiseau) qu'il me reste.
+ */
+function walkMinTo(p, from, to, planMin) {
+  const left = distM([p.lat, p.lng], [to.lat, to.lng]);
+  if (left < CONFIG.arrivedRadiusM) return 0;
+  const total = distM([from.lat, from.lng], [to.lat, to.lng]) || 1;
+  return planMin * Math.min(3, left / total);
+}
+const runnerPoint = (id) => CONFIG.runnerPoints.find((p) => p.id === id);
+
+/**
+ * Estimation de MON arrivée au spot km 15–16 (étape 7) et du temps de trajet restant.
+ * Phases : avant son passage au km 7 → plan ; marche retour → GPS si dispo ;
+ * métro → plan ; marche finale → GPS si dispo.
+ */
+function travelEstimate(t, times) {
+  const S = CONFIG.steps;
+  const iSpot7 = 3, iMuette = 4, iFdr = 5, iSpot = 6;     // étapes 4, 5, 6 et 7
+  const leave = passMs(runnerPoint(S[iMuette].leaveAfter).km); // je quitte le km 7 à son passage
+  const walkBack = S[iMuette].at.min, metro = S[iFdr].at.prev, walkEnd = S[iSpot].walkFromPrev;
+  const planArrival = times[iFdr] + walkEnd * MIN;
+  const p = freshGps();
+  let arrival = planArrival, how = 'plan';
+  if (t < leave) {
+    arrival = planArrival;
+  } else if (t < times[iMuette]) {                        // en marche vers La Muette
+    if (p) { arrival = t + (walkMinTo(p, S[iSpot7], S[iMuette], walkBack) + metro + walkEnd) * MIN; how = 'gps'; }
+  } else if (t < times[iFdr]) {                           // dans le métro
+    arrival = planArrival;
+  } else {                                                // en marche vers le spot
+    if (p) { arrival = t + walkMinTo(p, S[iFdr], S[iSpot], walkEnd) * MIN; how = 'gps'; }
+  }
+  return { arrival, remaining: Math.max(0, arrival - t), how };
+}
+
+/* =====================================================================
+   TRACÉ — longueurs cumulées et ancres pour interpoler la coureuse
+   ===================================================================== */
+const ROUTE = CONFIG.route;
+const CUM = [0];
+for (let i = 1; i < ROUTE.length; i++) CUM.push(CUM[i - 1] + distM(ROUTE[i - 1], ROUTE[i]));
+
+/* Chaque point clé est associé au sommet le plus proche du tracé */
+const ANCHORS = CONFIG.runnerPoints.map((p) => {
+  let best = 0, bestD = Infinity;
+  ROUTE.forEach((pt, i) => { const d = distM(pt, [p.lat, p.lng]); if (d < bestD) { bestD = d; best = i; } });
+  return { km: p.routeKm != null ? p.routeKm : p.km, dist: CUM[best] };
+}).sort((a, b) => a.km - b.km);
+
+/** Point du tracé correspondant à un km de course (interpolation entre ancres) */
+function routePointAtKm(km) {
+  let a = ANCHORS[0], b = ANCHORS[ANCHORS.length - 1];
+  for (let i = 0; i < ANCHORS.length - 1; i++) {
+    if (km >= ANCHORS[i].km && km <= ANCHORS[i + 1].km) { a = ANCHORS[i]; b = ANCHORS[i + 1]; break; }
+  }
+  const f = b.km === a.km ? 0 : clamp((km - a.km) / (b.km - a.km), 0, 1);
+  const target = a.dist + f * (b.dist - a.dist);
+  for (let i = 1; i < ROUTE.length; i++) {
+    if (CUM[i] >= target) {
+      const seg = CUM[i] - CUM[i - 1] || 1, g = (target - CUM[i - 1]) / seg;
+      return [ROUTE[i - 1][0] + g * (ROUTE[i][0] - ROUTE[i - 1][0]), ROUTE[i - 1][1] + g * (ROUTE[i][1] - ROUTE[i - 1][1])];
+    }
+  }
+  return ROUTE[ROUTE.length - 1];
+}
+
+/* =====================================================================
+   CARTE (Leaflet). Si Leaflet ne charge pas, le reste de la page marche.
+   ===================================================================== */
+const HAS_MAP = typeof window.L !== 'undefined';
+let map = null, runnerMarker = null, meMarker = null, meCircle = null, allBounds = null, routeBounds = null;
+
+function initMap() {
+  if (!HAS_MAP) {
+    $('map').innerHTML = '<div id="map-error">Carte indisponible (pas de réseau ?).<br>Le compte à rebours et les étapes fonctionnent quand même.</div>';
+    return;
+  }
+  map = L.map('map', { zoomControl: false, attributionControl: true });
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  }).addTo(map);
+
+  // Tracé de la course
+  const route = L.polyline(ROUTE, { color: '#e3001b', weight: 7, opacity: .55, lineJoin: 'round' }).addTo(map);
+  route.bindTooltip('Tracé indicatif de la course', { sticky: true });
+
+  // Segments du supporter
+  CONFIG.legs.forEach((leg) => {
+    const style = leg.mode === 'metro'
+      ? { color: CONFIG.lines[leg.line].color, weight: 6, opacity: .95 }
+      : { color: '#6b7280', weight: 4, opacity: .95, dashArray: '2 10', lineCap: 'round' };
+    L.polyline(leg.path, style).addTo(map)
+      .bindTooltip(leg.mode === 'metro' ? `Métro ${CONFIG.lines[leg.line].label}` : 'À pied', { sticky: true });
+  });
+
+  // Points clés de la coureuse
+  CONFIG.runnerPoints.forEach((p) => {
+    L.circleMarker([p.lat, p.lng], { radius: 6, color: '#fff', weight: 2, fillColor: '#d0001a', fillOpacity: 1 }).addTo(map);
+    const html = `<div class="km-pill">${esc(p.label)}${p.approx ? '<small>position approximative</small>' : ''}</div>`;
+    L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'km-anchor', html, iconSize: [0, 0] }), zIndexOffset: 100 })
+      .addTo(map).bindPopup(() => runnerPointPopup(p));
+  });
+
+  // Étapes numérotées du supporter (une seule pastille si deux étapes ont le même lieu)
+  const seen = {};
+  CONFIG.steps.forEach((s) => {
+    const key = `${s.lat},${s.lng}`;
+    if (seen[key]) { seen[key].nums.push(s.n); seen[key].marker.setIcon(stepIcon(seen[key].nums)); return; }
+    const marker = L.marker([s.lat, s.lng], { icon: stepIcon([s.n]), zIndexOffset: 500 })
+      .addTo(map).bindPopup(() => seen[key].nums.map((n) => stepPopup(CONFIG.steps[n - 1])).join('<hr>'));
+    seen[key] = { nums: [s.n], marker };
+  });
+
+  // Marqueur animé de la coureuse
+  runnerMarker = L.marker(routePointAtKm(runnerKmAt(now())), {
+    icon: L.divIcon({ className: '', html: '<div class="runner-icon"><span>🏃‍♀️</span></div>', iconSize: [46, 46], iconAnchor: [23, 23] }),
+    zIndexOffset: 1000,
+  }).addTo(map).bindPopup(() => runnerPopup());
+
+  // (copies : getBounds() renvoie l'objet interne du tracé, à ne pas modifier)
+  routeBounds = L.latLngBounds(ROUTE);
+  allBounds = L.latLngBounds(ROUTE).extend(L.latLngBounds(CONFIG.steps.map((s) => [s.lat, s.lng])));
+  fitTo(routeBounds);
+}
+
+function stepIcon(nums) {
+  const w = nums.length > 1 ? 52 : 34;
+  return L.divIcon({ className: '', html: `<div class="step-icon" style="width:${w}px;border-radius:17px">${nums.join('·')}</div>`,
+    iconSize: [w, 34], iconAnchor: [w / 2, 17] });
+}
+function stepPopup(s) {
+  const times = stepTimes(), t = times[s.n - 1];
+  return `<b>${s.n}. ${esc(s.name)}</b><br>${esc(s.verb)} : <b>${fmtHM(t)}</b><br>${esc(s.text)}`;
+}
+function runnerPointPopup(p) {
+  const when = p.kmTo != null ? `entre ${fmtHM(passMs(p.km))} (km ${p.km}) et ${fmtHM(passMs(p.kmTo))} (km ${p.kmTo})` : fmtHM(passMs(p.km));
+  return `<b>🏃‍♀️ ${esc(p.label)}</b> — ${esc(p.place)}<br>Passage estimé : <b>${when}</b>` +
+    (p.approx ? '<br><span class="badge approx">position approximative</span>' : '');
+}
+function runnerPopup() {
+  const t = now(), km = runnerKmAt(t);
+  const status = t < startMs() ? `Pas encore partie (départ ${fmtHM(startMs())})`
+    : km >= CONFIG.totalKm ? 'Arrivée !' : `Position estimée : km ${fmtKm(km)}`;
+  return `<b>🏃‍♀️ ${status}</b><br>Allure : ${fmtPace(settings.paceSec)} /km<br><small>Estimation d’après l’heure, le départ et l’allure.</small>`;
+}
+
+/** Cadre la carte en tenant compte du bandeau et du panneau */
+function fitTo(bounds) {
+  if (!map) return;
+  const top = $('top').offsetHeight, bottom = $('sheet').offsetHeight;
+  map.fitBounds(bounds, { paddingTopLeft: [20, top + 10], paddingBottomRight: [20, bottom + 40] });
+}
+/** Centre un point dans la zone visible (entre bandeau et panneau) */
+function centerOn(latlng, zoom) {
+  if (!map) return;
+  const z = zoom || Math.max(map.getZoom(), 16);
+  const shift = ($('sheet').offsetHeight - $('top').offsetHeight) / 2;
+  const pt = map.project(latlng, z).add([0, shift]);
+  map.setView(map.unproject(pt, z), z);
+}
+
+/* Déplacement fluide du marqueur de la coureuse */
+let runnerAnim = null;
+function updateRunner() {
+  if (!runnerMarker) return;
+  const to = routePointAtKm(runnerKmAt(now()));
+  const from = runnerMarker.getLatLng();
+  if (runnerAnim) cancelAnimationFrame(runnerAnim);
+  const t0 = performance.now(), dur = 1200;
+  const step = (ts) => {
+    const f = Math.min(1, (ts - t0) / dur);
+    runnerMarker.setLatLng([from.lat + (to[0] - from.lat) * f, from.lng + (to[1] - from.lng) * f]);
+    if (f < 1) runnerAnim = requestAnimationFrame(step);
+  };
+  runnerAnim = requestAnimationFrame(step);
+  if (runnerMarker.isPopupOpen()) runnerMarker.setPopupContent(runnerPopup());
+}
+
+/* =====================================================================
+   GÉOLOCALISATION du supporter
+   ===================================================================== */
+let gpsWatchId = null, wantCenter = false;
+function startGps() {
+  if (!('geolocation' in navigator)) { toast('Géolocalisation non disponible sur cet appareil.'); return; }
+  if (!window.isSecureContext) { toast('La géolocalisation demande une page en https (ou localhost).'); return; }
+  if (gpsWatchId != null) return;
+  gpsWatchId = navigator.geolocation.watchPosition(onGps, onGpsError,
+    { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 });
+}
+function onGps(pos) {
+  gps = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy, ts: Date.now() };
+  if (map) {
+    const ll = [gps.lat, gps.lng];
+    if (!meMarker) {
+      meCircle = L.circle(ll, { radius: gps.acc, color: '#1a73e8', weight: 1, fillOpacity: .12 }).addTo(map);
+      meMarker = L.circleMarker(ll, { radius: 9, color: '#fff', weight: 3, fillColor: '#1a73e8', fillOpacity: 1 })
+        .addTo(map).bindPopup('📍 Ma position');
+    } else { meMarker.setLatLng(ll); meCircle.setLatLng(ll).setRadius(gps.acc); }
+    if (wantCenter) { wantCenter = false; centerOn(ll, 17); }
+  }
+  renderTimeline();   // l'estimation de trajet utilise le GPS
+}
+function onGpsError(err) {
+  if (err.code === 1) { toast('Localisation refusée : autorise-la dans les réglages du navigateur.'); gpsWatchId = null; }
+  else if (wantCenter) toast('Position GPS introuvable pour l’instant…');
+}
+
+/* =====================================================================
+   AFFICHAGE — bandeau, alerte de marge, timeline, résumé, réglages
+   ===================================================================== */
+/** Bandeau du haut : prochain passage de la coureuse */
+function renderBanner() {
+  const t = now(), banner = $('banner');
+  let main, sub, cls = '';
+  const next = CONFIG.runnerPoints.map((p) => ({ p, from: passMs(p.km), to: passMs(p.kmTo != null ? p.kmTo : p.km) }))
+    .find((x) => x.to > t);
+  if (!next) {
+    main = '🎉 Elle a franchi l’arrivée';
+    sub = `Vers ${fmtHM(passMs(CONFIG.totalKm))} au pied de la tour Eiffel`;
+    cls = 'done';
+  } else if (t < next.from) {
+    const name = next.p.km === 0 ? 'départ' : next.p.km === CONFIG.totalKm ? 'arrivée (km 20)' : next.p.label;
+    const left = next.from - t;
+    main = `Prochain passage : ${name} dans ${fmtDur(left)}`;
+    sub = (next.p.kmTo != null ? `entre ${fmtHM(next.from)} et ${fmtHM(next.to)}` : `vers ${fmtHM(next.from)}`) +
+      ` · ${next.p.short}` + (next.p.approx ? ' (≈ position approx.)' : '');
+    if (left < CONFIG.urgentMin * MIN) cls = 'urgent';
+  } else {   // fenêtre km 15 → 16 en cours
+    main = `Passage en cours : ${next.p.label} !`;
+    sub = `jusqu’à ${fmtHM(next.to)} · ${next.p.short}`;
+    cls = 'urgent';
+  }
+  if (t >= startMs() && runnerKmAt(t) < CONFIG.totalKm) sub += ` · elle est vers le km ${fmtKm(runnerKmAt(t))}`;
+  banner.className = 'banner ' + cls;
+  $('cdMain').textContent = main;
+  $('cdSub').textContent = sub;
+  if (SIM_START != null) {
+    $('simChip').hidden = false;
+    $('simChip').textContent = `MODE TEST · heure simulée ${fmtHM(t)}${SIM_SPEED !== 1 ? ` (×${SIM_SPEED})` : ''}`;
+  }
+}
+
+/** Alerte de marge : passage km 16 − (maintenant + mon trajet restant) < 5 min */
+function refreshMargin() {
+  const t = now(), times = stepTimes(), box = $('marginAlert');
+  const tRef = passMs(CONFIG.marginKm);
+  const est = travelEstimate(t, times);
+  const margin = tRef - est.arrival;
+  if (est.remaining > 0 && t < tRef && margin < CONFIG.marginAlertMin * MIN) {
+    box.hidden = false;
+    box.className = 'alert' + (margin < 0 ? ' bad' : '');
+    box.textContent = margin < 0
+      ? `⚠ Trop tard pour le km 15–16 ? Arrivée estimée ${fmtHM(est.arrival)}, elle passe le km 16 vers ${fmtHM(tRef)}.`
+      : `⚠ Marge serrée : ${Math.floor(margin / MIN)} min seulement. Arrivée estimée ${fmtHM(est.arrival)}, passage km 16 vers ${fmtHM(tRef)}.`;
+  } else {
+    box.hidden = true;
+  }
+  syncLayout();
+  return { est, margin, tRef };
+}
+
+let lastCurrent = null;
+/** Timeline complète (étapes du supporter + passages de la coureuse) */
+function renderTimeline() {
+  const t = now(), times = stepTimes(), cur = currentStepIndex(t, times);
+  const { est, margin, tRef } = refreshMargin();
+
+  // Passages de la coureuse, insérés à leur place chronologique
+  const runs = CONFIG.runnerPoints.map((p) => ({ p, t: passMs(p.km), tTo: p.kmTo != null ? passMs(p.kmTo) : null }));
+  let ri = 0;
+  const items = [];
+  CONFIG.steps.forEach((s, i) => {
+    while (ri < runs.length && runs[ri].t < times[i]) items.push({ run: runs[ri++] });
+    items.push({ step: s, i });
+  });
+  while (ri < runs.length) items.push({ run: runs[ri++] });
+
+  const html = items.map((it) => {
+    if (it.run) {
+      const { p, tTo } = it.run, done = (tTo || it.run.t) <= t;
+      const when = tTo ? `${fmtHM(it.run.t)}–${fmtHM(tTo)}` : fmtHM(it.run.t);
+      return `<li class="run${done ? ' past' : ''}" data-lat="${p.lat}" data-lng="${p.lng}">
+        <div class="num">🏃‍♀️</div>
+        <div><div class="head"><span class="time">${when}</span><span class="verb">Elle passe ${p.km === 0 ? 'le départ' : p.km === CONFIG.totalKm ? 'l’arrivée' : 'au ' + esc(p.label)}</span>
+          ${done ? '<span class="badge done">passée ✓</span>' : ''}</div>
+          <div class="name">${esc(p.place)}</div>
+          ${p.approx ? '<div class="meta"><span class="badge approx">position approximative</span></div>' : ''}</div></li>`;
+    }
+    const s = it.step, i = it.i;
+    const state = i === cur ? 'current' : i < cur ? 'past' : i === cur + 1 ? 'next' : '';
+    const badge = state === 'current' ? '<span class="badge now">EN COURS</span>'
+      : state === 'next' ? '<span class="badge nxt">ENSUITE</span>' : state === 'past' ? '<span class="badge done">✓</span>' : '';
+    const pill = s.line === 'walk' ? '<span class="pill walk">🚶 à pied</span>'
+      : s.line ? `<span class="pill m${s.line}">${CONFIG.lines[s.line].label}</span>` : '';
+    let extra = '';
+    if (s.leaveAfter) {
+      const rp = runnerPoint(s.leaveAfter);
+      const when = rp.kmTo != null ? `entre ${fmtHM(passMs(rp.km))} et ${fmtHM(passMs(rp.kmTo))}` : `vers ${fmtHM(passMs(rp.km))}`;
+      extra += `<div class="est">Quitter le spot dès son passage (${esc(rp.label)}, ${when}).</div>`;
+    }
+    if (s.walkFromPrev) {
+      const arr = i === 6 ? est.arrival : times[i - 1] + s.walkFromPrev * MIN;
+      const late = arr - times[i];
+      if (i === 6) {
+        const where = est.remaining > 0 || t < times[i - 1] ? `Arrivée estimée ${fmtHM(arr)}${est.how === 'gps' ? ' (GPS)' : ''}` : 'Tu devrais y être';
+        extra += `<div class="est${margin < CONFIG.marginAlertMin * MIN ? ' warn' : ''}">${where} · marge ${Math.floor(margin / MIN)} min avant le km 16 (${fmtHM(tRef)})</div>`;
+      } else if (late > MIN) {
+        extra += `<div class="est warn">⚠ Arrivée estimée ${fmtHM(arr)}, ${Math.round(late / MIN)} min après l’objectif</div>`;
+      }
+    }
+    return `<li class="step ${state}" data-lat="${s.lat}" data-lng="${s.lng}" data-step="${i}">
+      <div class="num">${s.n}</div>
+      <div><div class="head"><span class="time">${fmtHM(times[i])}</span><span class="verb">${esc(s.verb)}</span>${badge}</div>
+        <div class="name">${esc(s.name)}</div>
+        <div class="text">${esc(s.text)}</div>
+        ${extra}
+        <div class="meta">${pill}${s.approx ? '<span class="badge approx">position approximative</span>' : ''}</div></div></li>`;
+  }).join('');
+  $('timeline').innerHTML = html;
+
+  // Résumé dans l'en-tête du panneau replié
+  const S = CONFIG.steps;
+  if (cur === -1) {
+    $('sumNow').textContent = `Prochaine étape : 1 · ${S[0].name} — ${S[0].verb.toLowerCase()} ${fmtHM(times[0])}`;
+    $('sumNext').textContent = `Dans ${fmtDur(times[0] - t)}`;
+  } else {
+    $('sumNow').textContent = `Étape ${S[cur].n} · ${S[cur].name} — ${S[cur].verb.toLowerCase()} ${fmtHM(times[cur])}`;
+    $('sumNext').textContent = cur + 1 < S.length
+      ? `Ensuite : ${S[cur + 1].n} · ${S[cur + 1].name} à ${fmtHM(times[cur + 1])} (dans ${fmtDur(times[cur + 1] - t)})`
+      : 'Dernière étape : direction l’arrivée au pied de la tour Eiffel !';
+  }
+
+  // Fait défiler jusqu'à l'étape en cours quand elle change
+  if (cur !== lastCurrent) {
+    lastCurrent = cur;
+    const el = $('timeline').querySelector('li.current') || $('timeline').querySelector('li.next');
+    if (el && !$('sheet').classList.contains('collapsed')) el.scrollIntoView({ block: 'center' });
+  }
+  syncLayout();
+}
+
+/** Onglet Réglages : valeurs et tableau des passages */
+let calibKm = null;
+function renderSettings() {
+  if (document.activeElement !== $('inStart')) $('inStart').value = settings.start;
+  if (document.activeElement !== $('inPace')) $('inPace').value = fmtPace(settings.paceSec);
+  $('paceNormal').textContent = `Allure prévue ${CONFIG.defaults.pace}`;
+  $('paceSlow').textContent = `🐢 Allure lente ${CONFIG.slowPace}`;
+  $('paceNormal').classList.toggle('active', settings.paceSec === DEFAULT_PACE);
+  $('paceSlow').classList.toggle('active', settings.paceSec === SLOW_PACE);
+  if (calibKm == null) calibKm = clamp(Math.round(runnerKmAt(now())) || 7, 0, CONFIG.totalKm);
+  $('kmVal').textContent = `km ${calibKm}`;
+  $('btnCalib').textContent = `Elle est passée maintenant au km ${calibKm}`;
+  $('calibInfo').textContent = settings.calib
+    ? `Dernier recalage : km ${settings.calib.km} à ${fmtHM(settings.calib.at)} → allure ${fmtPace(settings.paceSec)} /km.` : '';
+  const rows = [0, 7, 15, 16, 20].map((km) => `<tr><td>km ${km}${km === 7 ? ' ≈' : ''}</td><td>${fmtHM(passMs(km))}</td></tr>`);
+  $('passTable').innerHTML = rows.join('');
+}
+
+function renderAll() {
+  renderBanner();
+  renderTimeline();
+  renderSettings();
+}
+
+/* =====================================================================
+   PANNEAU, ONGLETS, BOUTONS
+   ===================================================================== */
+function syncLayout() {
+  const root = document.documentElement.style;
+  root.setProperty('--top-h', $('top').offsetHeight + 'px');
+  root.setProperty('--sheet-h', $('sheet').offsetHeight + 'px');
+}
+function setSheet(open) {
+  settings.sheetOpen = open; saveSettings();
+  $('sheet').classList.toggle('collapsed', !open);
+  document.body.classList.toggle('sheet-open', open);
+  $('sheetHead').setAttribute('aria-expanded', String(open));
+  $('toggleHint').textContent = open ? '▼ Replier' : '▲ Ouvrir';
+  syncLayout();
+  if (open) {
+    const el = $('timeline').querySelector('li.current') || $('timeline').querySelector('li.next');
+    if (el && settings.tab === 'steps') el.scrollIntoView({ block: 'center' });
+  }
+}
+function setTab(tab) {
+  settings.tab = tab; saveSettings();
+  document.querySelectorAll('.tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+  ['steps', 'settings', 'infos'].forEach((id) => { $('tab-' + id).hidden = id !== tab; });
+  $('sheetBody').scrollTop = 0;
+  if (tab === 'settings') { calibKm = null; renderSettings(); }
+}
+
+let toastTimer = null;
+function toast(msg, action) {
+  $('toastMsg').textContent = msg;
+  const btn = $('toastBtn');
+  btn.hidden = !action;
+  if (action) { btn.textContent = action.label; btn.onclick = () => { action.run(); hideToast(); }; }
+  $('toast').classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, action ? 8000 : 4500);
+}
+function hideToast() { $('toast').classList.remove('show'); }
+
+/** Applique un changement de réglages, avec possibilité d'annuler */
+function applySettings(change, message) {
+  const before = { start: settings.start, paceSec: settings.paceSec, calib: settings.calib };
+  Object.assign(settings, change);
+  saveSettings();
+  renderAll(); updateRunner();
+  if (message) toast(message, { label: 'Annuler', run: () => { Object.assign(settings, before); saveSettings(); renderAll(); updateRunner(); } });
+}
+
+function bindUi() {
+  $('sheetHead').addEventListener('click', () => setSheet($('sheet').classList.contains('collapsed')));
+  document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
+
+  // Toucher une étape → centrer la carte dessus
+  $('timeline').addEventListener('click', (e) => {
+    const li = e.target.closest('li');
+    if (!li || !map) return;
+    setSheet(false);
+    centerOn([+li.dataset.lat, +li.dataset.lng], 16);
+  });
+
+  $('btnMe').addEventListener('click', () => {
+    if (gps && map) centerOn([gps.lat, gps.lng], 17);
+    else { wantCenter = true; toast('Recherche de ta position…'); startGps(); }
+  });
+  $('btnRunner').addEventListener('click', () => { if (runnerMarker) { centerOn(runnerMarker.getLatLng(), 15); runnerMarker.openPopup(); } });
+  $('btnAll').addEventListener('click', () => allBounds && fitTo(allBounds));
+
+  // Heure de départ
+  $('inStart').addEventListener('change', () => {
+    const v = $('inStart').value;
+    if (hhmmToSec(v) != null) applySettings({ start: v.slice(0, 5), calib: null }, `Départ réglé à ${v.slice(0, 5)}`);
+  });
+
+  // Allure
+  const setPace = (sec, msg) => { $('paceErr').hidden = true; applySettings({ paceSec: sec, calib: null }, msg); };
+  const commitPace = () => {
+    const sec = parsePace($('inPace').value);
+    if (sec == null) {
+      $('paceErr').hidden = false;
+      $('paceErr').textContent = 'Format attendu : minutes:secondes, par exemple 6:26 (entre 3:00 et 15:00).';
+      return;
+    }
+    if (sec !== settings.paceSec) setPace(sec, `Allure réglée à ${fmtPace(sec)} /km`);
+  };
+  $('inPace').addEventListener('change', commitPace);
+  $('inPace').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('inPace').blur(); commitPace(); } });
+  $('paceMinus').addEventListener('click', () => setPace(clamp(settings.paceSec - 5, 180, 900)));
+  $('pacePlus').addEventListener('click', () => setPace(clamp(settings.paceSec + 5, 180, 900)));
+  $('paceNormal').addEventListener('click', () => setPace(DEFAULT_PACE, `Allure prévue : ${CONFIG.defaults.pace} /km`));
+  $('paceSlow').addEventListener('click', () => setPace(SLOW_PACE, `Allure lente : ${CONFIG.slowPace} /km`));
+
+  // Recalage « Elle est passée maintenant au km X »
+  $('kmMinus').addEventListener('click', () => { calibKm = clamp(calibKm - 1, 0, CONFIG.totalKm); renderSettings(); });
+  $('kmPlus').addEventListener('click', () => { calibKm = clamp(calibKm + 1, 0, CONFIG.totalKm); renderSettings(); });
+  $('btnCalib').addEventListener('click', () => {
+    const t = now(), km = calibKm;
+    if (km === 0) {   // elle part maintenant : on recale l'heure de départ
+      const d = new Date(t), hhmm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      applySettings({ start: hhmm, calib: { km: 0, at: t } }, `Départ recalé à ${hhmm}`);
+      return;
+    }
+    const elapsed = (t - startMs()) / 1000;
+    if (elapsed <= 0) { toast(`Impossible : d’après les réglages, elle n’est pas encore partie (départ ${fmtHM(startMs())}).`); return; }
+    const pace = Math.round(elapsed / km);
+    if (pace < 180 || pace > 900) { toast(`Allure calculée incohérente (${fmtPace(pace)} /km) : vérifie l’heure de départ.`); return; }
+    applySettings({ paceSec: pace, calib: { km, at: t } }, `Recalé au km ${km} : allure réelle ${fmtPace(pace)} /km`);
+  });
+
+  $('btnReset').addEventListener('click', () => {
+    applySettings({ start: CONFIG.defaults.start, paceSec: DEFAULT_PACE, calib: null }, 'Réglages réinitialisés');
+  });
+
+  // Rafraîchir dès que la page revient au premier plan
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { renderAll(); updateRunner(); } });
+  window.addEventListener('resize', syncLayout);
+  if ('ResizeObserver' in window) {
+    const ro = new ResizeObserver(syncLayout);
+    ro.observe($('top')); ro.observe($('sheet'));
+  }
+}
+
+/* =====================================================================
+   DÉMARRAGE
+   ===================================================================== */
+bindUi();
+setTab(settings.tab);
+setSheet(settings.sheetOpen);
+renderAll();
+syncLayout();
+initMap();
+updateRunner();
+startGps();
+
+setInterval(() => { renderBanner(); refreshMargin(); }, 1000);                         // compte à rebours
+setInterval(() => { updateRunner(); renderTimeline(); renderSettings(); }, CONFIG.runnerUpdateMs); // toutes les 15 s
+</script>
+</body>
+</html>
